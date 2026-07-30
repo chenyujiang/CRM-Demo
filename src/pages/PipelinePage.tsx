@@ -26,6 +26,8 @@ import {
   type Contact,
 } from "@/services/contactsService";
 import {
+  DEAL_STAGES,
+  dealStageLabels,
   dealsService as defaultDealsService,
   type Deal,
   type DealInput,
@@ -33,22 +35,11 @@ import {
 } from "@/services/dealsService";
 import { cn } from "@/lib/utils";
 
-const STAGES: { id: DealStage; label: string }[] = [
-  { id: "new", label: "New" },
-  { id: "qualified", label: "Qualified" },
-  { id: "proposal", label: "Proposal" },
-  { id: "negotiation", label: "Negotiation" },
-  { id: "won", label: "Won" },
-  { id: "lost", label: "Lost" },
-];
-
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 0,
 });
-
-const stageLabels = new Map(STAGES.map((stage) => [stage.id, stage.label]));
 
 /**
  * The outcome of a drag-and-drop action: given the event dnd-kit reports
@@ -77,7 +68,7 @@ const columnKeyboardCoordinateGetter: KeyboardCoordinateGetter = (
   const draggedFromStage = active.data.current?.stage as DealStage | undefined;
   if (!draggedFromStage) return undefined;
 
-  const stageIds = STAGES.map((s) => s.id);
+  const stageIds = DEAL_STAGES.map((s) => s.id);
   const currentIndex = stageIds.indexOf(draggedFromStage);
 
   let nextIndex: number | null = null;
@@ -206,7 +197,7 @@ export function PipelinePage({
 
       <DndContext sensors={sensors} onDragEnd={(event) => void onDragEnd(event)}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {STAGES.map((stage) => (
+          {DEAL_STAGES.map((stage) => (
             <DealColumn
               key={stage.id}
               stage={stage}
@@ -271,7 +262,7 @@ export function PipelinePage({
                 value={form.stage}
                 onChange={(event) => setForm({ ...form, stage: event.target.value as DealStage })}
               >
-                {STAGES.map((stage) => (
+                {DEAL_STAGES.map((stage) => (
                   <option key={stage.id} value={stage.id}>
                     {stage.label}
                   </option>
@@ -360,7 +351,7 @@ function DealCard({ deal, onOpen, onDelete }: DealCardProps) {
       </button>
       <p className="text-muted-foreground">{deal.contactName}</p>
       <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-        {stageLabels.get(deal.stage)}
+        {dealStageLabels[deal.stage]}
       </span>
       <div className="flex items-center justify-between">
         <span>{currencyFormatter.format(deal.value)}</span>

@@ -2,6 +2,19 @@ import { supabase } from "@/lib/supabase";
 
 export type DealStage = "new" | "qualified" | "proposal" | "negotiation" | "won" | "lost";
 
+export const DEAL_STAGES: { id: DealStage; label: string }[] = [
+  { id: "new", label: "New" },
+  { id: "qualified", label: "Qualified" },
+  { id: "proposal", label: "Proposal" },
+  { id: "negotiation", label: "Negotiation" },
+  { id: "won", label: "Won" },
+  { id: "lost", label: "Lost" },
+];
+
+export const dealStageLabels: Record<DealStage, string> = Object.fromEntries(
+  DEAL_STAGES.map((stage) => [stage.id, stage.label]),
+) as Record<DealStage, string>;
+
 export interface Deal {
   id: string;
   name: string;

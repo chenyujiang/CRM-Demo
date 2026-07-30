@@ -6,17 +6,11 @@ import {
   dashboardService as defaultDashboardService,
   type DashboardMetrics,
 } from "@/services/dashboardService";
-import { dealsService as defaultDealsService, type DealStage } from "@/services/dealsService";
+import {
+  dealsService as defaultDealsService,
+  dealStageLabels,
+} from "@/services/dealsService";
 import { tasksService as defaultTasksService } from "@/services/tasksService";
-
-const stageLabels: Record<DealStage, string> = {
-  new: "New",
-  qualified: "Qualified",
-  proposal: "Proposal",
-  negotiation: "Negotiation",
-  won: "Won",
-  lost: "Lost",
-};
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -66,7 +60,7 @@ export function DashboardPage({
   const chartData = React.useMemo(
     () =>
       (metrics?.valueByStage ?? []).map(({ stage, value }) => ({
-        stage: stageLabels[stage],
+        stage: dealStageLabels[stage],
         value,
       })),
     [metrics],
