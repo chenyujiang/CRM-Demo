@@ -34,6 +34,41 @@ const contacts = [
   { name: "Daniel Whitfield", company: "Solstice Works", email: "daniel.whitfield@solsticeworks.test", phone: "555-0118", notes: null },
 ];
 
+function isoDateOffset(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function tasksFor(contactIdByEmail: Map<string, string>, dealIdByName: Map<string, string>) {
+  const contact = (email: string) => {
+    const id = contactIdByEmail.get(email);
+    if (!id) throw new Error(`Seed contact not found for task: ${email}`);
+    return id;
+  };
+  const deal = (name: string) => {
+    const id = dealIdByName.get(name);
+    if (!id) throw new Error(`Seed deal not found for task: ${name}`);
+    return id;
+  };
+
+  return [
+    { title: "Send proposal follow-up", due_date: isoDateOffset(-5), completed: false, contact_id: null, deal_id: null },
+    { title: "Call about renewal", due_date: isoDateOffset(-2), completed: false, contact_id: contact("isabella.chen@fenwickdigital.test"), deal_id: null },
+    { title: "Prepare contract for Enterprise plan", due_date: isoDateOffset(0), completed: false, contact_id: null, deal_id: deal("Enterprise plan") },
+    { title: "Check in with Ava Thompson", due_date: isoDateOffset(2), completed: false, contact_id: contact("ava.thompson@northwindsaas.test"), deal_id: null },
+    { title: "Update pipeline notes", due_date: isoDateOffset(3), completed: false, contact_id: null, deal_id: null },
+    { title: "Quarterly review for Analytics upgrade", due_date: isoDateOffset(14), completed: false, contact_id: null, deal_id: deal("Analytics upgrade") },
+    { title: "Plan Q4 outreach", due_date: isoDateOffset(30), completed: false, contact_id: null, deal_id: null },
+    { title: "Send holiday card to Harper Singh", due_date: isoDateOffset(45), completed: false, contact_id: contact("harper.singh@lumendataco.test"), deal_id: null },
+    { title: "Kickoff call with Northwind SaaS", due_date: isoDateOffset(-10), completed: true, contact_id: contact("ava.thompson@northwindsaas.test"), deal_id: null },
+    { title: "Send pricing sheet for Referral deal", due_date: isoDateOffset(-3), completed: true, contact_id: null, deal_id: deal("Referral deal") },
+  ];
+}
+
 function dealsFor(contactIdByEmail: Map<string, string>) {
   const idFor = (email: string) => {
     const id = contactIdByEmail.get(email);
@@ -61,6 +96,9 @@ async function seed() {
   });
   if (authError) throw authError;
 
+  const { error: deleteTasksError } = await supabase.from("tasks").delete().not("id", "is", null);
+  if (deleteTasksError) throw deleteTasksError;
+
   const { error: deleteDealsError } = await supabase.from("deals").delete().not("id", "is", null);
   if (deleteDealsError) throw deleteDealsError;
 
@@ -85,10 +123,22 @@ async function seed() {
   const { data: insertedDeals, error: insertDealsError } = await supabase
     .from("deals")
     .insert(dealsFor(contactIdByEmail))
-    .select("id");
+    .select("id, name");
   if (insertDealsError) throw insertDealsError;
 
   console.log(`Seeded ${insertedDeals.length} deals.`);
+
+  const dealIdByName = new Map(
+    insertedDeals.map((d: { id: string; name: string }) => [d.name, d.id]),
+  );
+
+  const { data: insertedTasks, error: insertTasksError } = await supabase
+    .from("tasks")
+    .insert(tasksFor(contactIdByEmail, dealIdByName))
+    .select("id");
+  if (insertTasksError) throw insertTasksError;
+
+  console.log(`Seeded ${insertedTasks.length} tasks.`);
 
   await supabase.auth.signOut();
 }
