@@ -83,6 +83,52 @@ describe("ContactsPage", () => {
     expect(screen.getByText("Bob Smith")).toBeInTheDocument();
   });
 
+  test("opens a contact's detail view showing all its fields, including notes", async () => {
+    const user = userEvent.setup();
+    const service = createFakeContactsService([
+      makeContact({
+        id: "1",
+        name: "Jane Doe",
+        company: "Acme Inc",
+        email: "jane@acme.test",
+        phone: "555-1234",
+        notes: "Met at the spring conference.",
+      }),
+    ]);
+    render(<ContactsPage contactsService={service} />);
+    await screen.findByText("Jane Doe");
+
+    await user.click(screen.getByRole("button", { name: "Jane Doe" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Jane Doe")).toBeInTheDocument();
+    expect(within(dialog).getByText("Acme Inc")).toBeInTheDocument();
+    expect(within(dialog).getByText("jane@acme.test")).toBeInTheDocument();
+    expect(within(dialog).getByText("555-1234")).toBeInTheDocument();
+    expect(within(dialog).getByText("Met at the spring conference.")).toBeInTheDocument();
+  });
+
+  test("moves from the detail view into editing", async () => {
+    const user = userEvent.setup();
+    const service = createFakeContactsService([
+      makeContact({ id: "1", name: "Jane Doe", company: "Acme Inc" }),
+    ]);
+    render(<ContactsPage contactsService={service} />);
+    await screen.findByText("Jane Doe");
+
+    await user.click(screen.getByRole("button", { name: "Jane Doe" }));
+    const detailDialog = await screen.findByRole("dialog");
+    await user.click(within(detailDialog).getByRole("button", { name: /edit/i }));
+
+    const editDialog = await screen.findByRole("dialog");
+    const nameField = within(editDialog).getByLabelText(/^name/i);
+    await user.clear(nameField);
+    await user.type(nameField, "Jane Updated");
+    await user.click(within(editDialog).getByRole("button", { name: /save/i }));
+
+    expect(await screen.findByText("Jane Updated")).toBeInTheDocument();
+  });
+
   test("filters the list by search", async () => {
     const user = userEvent.setup();
     const service = createFakeContactsService([

@@ -17,7 +17,11 @@ import {
   type ContactInput,
 } from "@/services/contactsService";
 
-type DialogState = { mode: "create" } | { mode: "edit"; contact: Contact } | null;
+type DialogState =
+  | { mode: "view"; contact: Contact }
+  | { mode: "create" }
+  | { mode: "edit"; contact: Contact }
+  | null;
 
 const emptyForm: ContactInput = {
   name: "",
@@ -54,6 +58,10 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
     void refresh(query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, refresh]);
+
+  function openView(contact: Contact) {
+    setDialogState({ mode: "view", contact });
+  }
 
   function openCreate() {
     setForm(emptyForm);
@@ -140,7 +148,15 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
             <tbody>
               {contacts.map((contact) => (
                 <tr key={contact.id} className="border-b last:border-0">
-                  <td className="px-4 py-2 font-medium">{contact.name}</td>
+                  <td className="px-4 py-2 font-medium">
+                    <button
+                      type="button"
+                      className="hover:underline"
+                      onClick={() => openView(contact)}
+                    >
+                      {contact.name}
+                    </button>
+                  </td>
                   <td className="px-4 py-2">{contact.company}</td>
                   <td className="px-4 py-2">{contact.email}</td>
                   <td className="px-4 py-2">{contact.phone}</td>
@@ -173,10 +189,41 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
 
       <Dialog open={dialogState !== null} onOpenChange={(open) => !open && setDialogState(null)}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{dialogState?.mode === "edit" ? "Edit contact" : "Add contact"}</DialogTitle>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={handleSave}>
+          {dialogState?.mode === "view" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{dialogState.contact.name}</DialogTitle>
+              </DialogHeader>
+              <dl className="space-y-3 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">Company</dt>
+                  <dd>{dialogState.contact.company}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Email</dt>
+                  <dd>{dialogState.contact.email}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Phone</dt>
+                  <dd>{dialogState.contact.phone}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Notes</dt>
+                  <dd className="whitespace-pre-wrap">{dialogState.contact.notes}</dd>
+                </div>
+              </dl>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => openEdit(dialogState.contact)}>
+                  Edit
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{dialogState?.mode === "edit" ? "Edit contact" : "Add contact"}</DialogTitle>
+              </DialogHeader>
+              <form className="space-y-4" onSubmit={handleSave}>
             <div className="space-y-2">
               <Label htmlFor="contact-name">Name</Label>
               <Input
@@ -229,7 +276,9 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
                 {saving ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
-          </form>
+              </form>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
