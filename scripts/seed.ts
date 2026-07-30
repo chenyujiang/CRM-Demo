@@ -34,6 +34,26 @@ const contacts = [
   { name: "Daniel Whitfield", company: "Solstice Works", email: "daniel.whitfield@solsticeworks.test", phone: "555-0118", notes: null },
 ];
 
+function dealsFor(contactIdByEmail: Map<string, string>) {
+  const idFor = (email: string) => {
+    const id = contactIdByEmail.get(email);
+    if (!id) throw new Error(`Seed contact not found for deal: ${email}`);
+    return id;
+  };
+
+  return [
+    { name: "Platform expansion", value: 15000, stage: "new", contact_id: idFor("ava.thompson@northwindsaas.test") },
+    { name: "Initial rollout", value: 8000, stage: "new", contact_id: idFor("sophia.nguyen@brightlinecloud.test") },
+    { name: "Analytics upgrade", value: 22000, stage: "qualified", contact_id: idFor("emma.rodriguez@vertexanalytics.test") },
+    { name: "Renewal", value: 12000, stage: "qualified", contact_id: idFor("isabella.chen@fenwickdigital.test") },
+    { name: "Onboarding package", value: 9500, stage: "proposal", contact_id: idFor("mia.johansson@cascademetrics.test") },
+    { name: "Enterprise plan", value: 30000, stage: "proposal", contact_id: idFor("charlotte.dubois@anchorpointsystems.test") },
+    { name: "Technical evaluation", value: 18000, stage: "negotiation", contact_id: idFor("amelia.novak@redshiftlabs.test") },
+    { name: "Referral deal", value: 14000, stage: "won", contact_id: idFor("harper.singh@lumendataco.test") },
+    { name: "Budget freeze", value: 6000, stage: "lost", contact_id: idFor("evelyn.marsh@solsticeworks.test") },
+  ];
+}
+
 async function seed() {
   const { error: authError } = await supabase.auth.signInWithPassword({
     email: demoEmail,
@@ -41,19 +61,34 @@ async function seed() {
   });
   if (authError) throw authError;
 
-  const { error: deleteError } = await supabase
+  const { error: deleteDealsError } = await supabase.from("deals").delete().not("id", "is", null);
+  if (deleteDealsError) throw deleteDealsError;
+
+  const { error: deleteContactsError } = await supabase
     .from("contacts")
     .delete()
     .not("id", "is", null);
-  if (deleteError) throw deleteError;
+  if (deleteContactsError) throw deleteContactsError;
 
-  const { data, error: insertError } = await supabase
+  const { data: insertedContacts, error: insertContactsError } = await supabase
     .from("contacts")
     .insert(contacts)
-    .select("id");
-  if (insertError) throw insertError;
+    .select("id, email");
+  if (insertContactsError) throw insertContactsError;
 
-  console.log(`Seeded ${data.length} contacts.`);
+  console.log(`Seeded ${insertedContacts.length} contacts.`);
+
+  const contactIdByEmail = new Map(
+    insertedContacts.map((c: { id: string; email: string }) => [c.email, c.id]),
+  );
+
+  const { data: insertedDeals, error: insertDealsError } = await supabase
+    .from("deals")
+    .insert(dealsFor(contactIdByEmail))
+    .select("id");
+  if (insertDealsError) throw insertDealsError;
+
+  console.log(`Seeded ${insertedDeals.length} deals.`);
 
   await supabase.auth.signOut();
 }
