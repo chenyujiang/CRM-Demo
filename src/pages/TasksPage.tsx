@@ -20,6 +20,7 @@ import {
   type Task,
   type TaskInput,
 } from "@/services/tasksService";
+import { toLocalIsoDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 export type TaskUrgency = "overdue" | "due-soon" | "normal";
@@ -64,13 +65,6 @@ interface FormState {
   dueDate: string;
   contactId: string;
   dealId: string;
-}
-
-function toLocalIsoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function todayIso(): string {
@@ -199,7 +193,7 @@ export function TasksPage({
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
-                    aria-label={task.title}
+                    aria-label={`Mark ${task.title} complete`}
                     checked={task.completed}
                     onChange={() => void handleToggleComplete(task)}
                   />

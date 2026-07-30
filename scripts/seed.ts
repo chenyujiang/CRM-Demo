@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
+import { toLocalIsoDate } from "../src/lib/date";
+
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 const demoEmail = "demo@crm-demo.test";
@@ -37,10 +39,7 @@ const contacts = [
 function isoDateOffset(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return toLocalIsoDate(d);
 }
 
 function tasksFor(contactIdByEmail: Map<string, string>, dealIdByName: Map<string, string>) {
