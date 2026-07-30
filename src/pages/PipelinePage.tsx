@@ -48,6 +48,8 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
+const stageLabels = new Map(STAGES.map((stage) => [stage.id, stage.label]));
+
 /**
  * The outcome of a drag-and-drop action: given the event dnd-kit reports
  * when a card is dropped, decide whether it represents a real stage change.
@@ -72,11 +74,11 @@ const columnKeyboardCoordinateGetter: KeyboardCoordinateGetter = (
   { context: { active, droppableRects } },
 ) => {
   if (!active) return undefined;
+  const draggedFromStage = active.data.current?.stage as DealStage | undefined;
+  if (!draggedFromStage) return undefined;
+
   const stageIds = STAGES.map((s) => s.id);
-  const activeStage = stageIds.find((id) => droppableRects.get(id)?.top !== undefined);
-  const currentIndex = active.data.current?.stage
-    ? stageIds.indexOf(active.data.current.stage as DealStage)
-    : stageIds.indexOf(activeStage ?? stageIds[0]);
+  const currentIndex = stageIds.indexOf(draggedFromStage);
 
   let nextIndex: number | null = null;
   if (event.code === "ArrowRight") nextIndex = currentIndex + 1;
@@ -357,6 +359,9 @@ function DealCard({ deal, onOpen, onDelete }: DealCardProps) {
         {deal.name}
       </button>
       <p className="text-muted-foreground">{deal.contactName}</p>
+      <span className="inline-block rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+        {stageLabels.get(deal.stage)}
+      </span>
       <div className="flex items-center justify-between">
         <span>{currencyFormatter.format(deal.value)}</span>
         <Button
