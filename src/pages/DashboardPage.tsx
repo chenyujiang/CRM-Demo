@@ -127,7 +127,10 @@ export function DashboardPage({
                 <Tooltip
                   formatter={(value) => currencyFormatter.format(Number(value ?? 0))}
                 />
-                <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                {/* SVG fill is a presentation attribute, not a style — it can't
+                    resolve a CSS custom property like hsl(var(--primary)), so
+                    this mirrors the --primary token's static value directly. */}
+                <Bar dataKey="value" fill="hsl(222.2, 47.4%, 11.2%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
