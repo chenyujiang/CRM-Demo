@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/contexts/ToastContext";
+import { deleteWithToast, useToast } from "@/contexts/ToastContext";
+import { matchesQuery } from "@/lib/search";
 import {
   contactsService as defaultContactsService,
   type Contact,
@@ -54,14 +55,7 @@ export function getTaskUrgency(
  * task's title, linked contact name, or linked deal name, case-insensitively.
  */
 export function filterTasks(tasks: Task[], query: string): Task[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return tasks;
-  return tasks.filter(
-    (task) =>
-      task.title.toLowerCase().includes(q) ||
-      (task.contactName ?? "").toLowerCase().includes(q) ||
-      (task.dealName ?? "").toLowerCase().includes(q),
-  );
+  return tasks.filter((task) => matchesQuery(query, task.title, task.contactName, task.dealName));
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -148,18 +142,22 @@ export function TasksPage({
   }
 
   async function handleDelete(task: Task) {
-    try {
-      await tasksService.remove(task.id);
-      await refresh();
-      showToast(`Deleted ${task.title}.`);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to delete task", "error");
-    }
+    await deleteWithToast(
+      async () => {
+        await tasksService.remove(task.id);
+        await refresh();
+      },
+      `Deleted ${task.title}.`,
+      "Failed to delete task",
+      showToast,
+    );
   }
 
   async function handleToggleComplete(task: Task) {
-    await tasksService.markComplete(task.id, !task.completed);
+    const completed = !task.completed;
+    await tasksService.markComplete(task.id, completed);
     await refresh();
+    showToast(completed ? "Marked complete." : "Marked incomplete.");
   }
 
   async function handleSave(event: React.FormEvent) {

@@ -61,3 +61,21 @@ export function useToast(): ToastContextValue {
   if (!ctx) throw new Error("useToast must be used within a ToastProvider");
   return ctx;
 }
+
+/**
+ * Runs a delete action, toasting the outcome — the same
+ * try/succeed-toast/catch-and-toast-error shape every delete handler needs.
+ */
+export async function deleteWithToast(
+  action: () => Promise<void>,
+  successMessage: string,
+  failureMessage: string,
+  showToast: ToastContextValue["showToast"],
+): Promise<void> {
+  try {
+    await action();
+    showToast(successMessage);
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : failureMessage, "error");
+  }
+}

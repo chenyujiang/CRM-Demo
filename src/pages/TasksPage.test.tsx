@@ -236,6 +236,7 @@ describe("TasksPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: /mark me done/i })).toBeChecked();
     });
+    expect(await screen.findByText(/marked complete/i)).toBeInTheDocument();
   });
 
   test("deletes a task", async () => {

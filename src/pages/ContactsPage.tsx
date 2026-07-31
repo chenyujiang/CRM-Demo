@@ -22,7 +22,7 @@ import {
   type Deal,
 } from "@/services/dealsService";
 import { tasksService as defaultTasksService, type Task } from "@/services/tasksService";
-import { useToast } from "@/contexts/ToastContext";
+import { deleteWithToast, useToast } from "@/contexts/ToastContext";
 
 type DialogState =
   | { mode: "view"; contact: Contact }
@@ -115,13 +115,15 @@ export function ContactsPage({
   }
 
   async function handleDelete(contact: Contact) {
-    try {
-      await contactsService.remove(contact.id);
-      await refresh(query);
-      showToast(`Deleted ${contact.name}.`);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to delete contact", "error");
-    }
+    await deleteWithToast(
+      async () => {
+        await contactsService.remove(contact.id);
+        await refresh(query);
+      },
+      `Deleted ${contact.name}.`,
+      "Failed to delete contact",
+      showToast,
+    );
   }
 
   async function handleSave(event: React.FormEvent) {

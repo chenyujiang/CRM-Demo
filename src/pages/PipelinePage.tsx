@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/contexts/ToastContext";
+import { deleteWithToast, useToast } from "@/contexts/ToastContext";
+import { matchesQuery } from "@/lib/search";
 import {
   contactsService as defaultContactsService,
   type Contact,
@@ -54,12 +55,7 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
  * rule is directly testable without rendering the board.
  */
 export function filterDeals(deals: Deal[], query: string): Deal[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return deals;
-  return deals.filter(
-    (deal) =>
-      deal.name.toLowerCase().includes(q) || (deal.contactName ?? "").toLowerCase().includes(q),
-  );
+  return deals.filter((deal) => matchesQuery(query, deal.name, deal.contactName));
 }
 
 export function handleDealDrop(
@@ -173,13 +169,15 @@ export function PipelinePage({
   }
 
   async function handleDelete(deal: Deal) {
-    try {
-      await dealsService.remove(deal.id);
-      await refresh();
-      showToast(`Deleted ${deal.name}.`);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to delete deal", "error");
-    }
+    await deleteWithToast(
+      async () => {
+        await dealsService.remove(deal.id);
+        await refresh();
+      },
+      `Deleted ${deal.name}.`,
+      "Failed to delete deal",
+      showToast,
+    );
   }
 
   async function handleSave(event: React.FormEvent) {
