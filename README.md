@@ -1,12 +1,13 @@
 # CRM Demo
 
-A proof-of-concept CRM built to demonstrate a modern web app stack to clients and internal stakeholders. Covers contacts, a drag-and-drop sales pipeline, task follow-ups, and a metrics dashboard.
+A proof-of-concept CRM built to demonstrate a modern web app stack to clients and internal stakeholders. Covers contacts, a drag-and-drop sales pipeline, task follow-ups, a metrics dashboard, and email/password auth with self-service sign-up.
 
 **Live demo:** https://crm-demo-eason-chen.vercel.app
 **Login:** `demo@crm-demo.test` / `Demo12345!`
 
 ## Features
 
+- **Auth** — email/password login and self-service sign-up, gated by Supabase email confirmation
 - **Contacts** — search, view, create, edit, and delete contacts
 - **Pipeline** — a kanban board of deals across six stages (New → Qualified → Proposal → Negotiation → Won/Lost), with drag-and-drop (mouse and keyboard) to change stage
 - **Tasks** — follow-ups optionally linked to a contact or deal, with overdue/due-soon highlighting and complete/incomplete toggling
