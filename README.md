@@ -46,7 +46,3 @@ npm run dev
 Each entity (contacts, deals, tasks, auth) has a dedicated `src/services/*Service.ts` module that wraps all Supabase access behind a small set of functions (`list`/`create`/`update`/`remove`, plus entity-specific operations). Page components accept an optional service prop that defaults to the real implementation, which lets UI tests inject a fake service instead of mocking Supabase directly.
 
 Business logic that doesn't need a live database — task urgency, drag-drop outcome, dashboard aggregation — is extracted into small pure functions and unit tested directly.
-
-## Project history
-
-This project was planned and built end-to-end following the [mattpocock-skills](https://github.com/mattpocock) workflow (wayfinder → spec → tickets → implement → code-review). The spec and per-ticket breakdown live under `.scratch/crm-demo/`.
