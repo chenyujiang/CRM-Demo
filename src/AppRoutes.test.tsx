@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import { AppRoutes } from "@/AppRoutes";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ToastProvider } from "@/contexts/ToastContext";
 import type { authService as realAuthService, Session } from "@/services/authService";
 
 /**
@@ -44,9 +45,11 @@ function createFakeAuthService(): typeof realAuthService {
 function renderApp(authService: typeof realAuthService, initialPath = "/login") {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <AuthProvider authService={authService}>
-        <AppRoutes />
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider authService={authService}>
+          <AppRoutes />
+        </AuthProvider>
+      </ToastProvider>
     </MemoryRouter>,
   );
 }

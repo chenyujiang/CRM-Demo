@@ -1,11 +1,12 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 
-import { getTaskUrgency, TasksPage } from "@/pages/TasksPage";
+import { filterTasks, getTaskUrgency, TasksPage } from "@/pages/TasksPage";
 import type { Contact, contactsService as realContactsService } from "@/services/contactsService";
 import type { Deal, dealsService as realDealsService } from "@/services/dealsService";
 import type { Task, tasksService as realTasksService } from "@/services/tasksService";
+import { renderWithToast } from "@/test/renderWithToast";
 
 function isoDateOffset(days: number): string {
   const d = new Date();
@@ -136,7 +137,7 @@ describe("TasksPage", () => {
       makeTask({ id: "1", title: "Call Jane", contactName: "Jane Doe" }),
       makeTask({ id: "2", title: "Close the deal", dealName: "Big Deal" }),
     ]);
-    render(
+    renderWithToast(
       <TasksPage
         tasksService={tasksService}
         contactsService={createFakeContactsService([])}
@@ -156,7 +157,7 @@ describe("TasksPage", () => {
       makeTask({ id: "2", title: "Task B", dueDate: isoDateOffset(1) }),
       makeTask({ id: "3", title: "Task C", dueDate: isoDateOffset(30) }),
     ]);
-    render(
+    renderWithToast(
       <TasksPage
         tasksService={tasksService}
         contactsService={createFakeContactsService([])}
@@ -177,7 +178,7 @@ describe("TasksPage", () => {
   test("creates a new task optionally linked to a contact", async () => {
     const user = userEvent.setup();
     const tasksService = createFakeTasksService([]);
-    render(
+    renderWithToast(
       <TasksPage
         tasksService={tasksService}
         contactsService={createFakeContactsService([makeContact({ id: "contact-1", name: "Jane Doe" })])}
@@ -193,12 +194,13 @@ describe("TasksPage", () => {
     await user.click(within(dialog).getByRole("button", { name: /save/i }));
 
     expect(await screen.findByText("New follow-up")).toBeInTheDocument();
+    expect(await screen.findByText(/task created/i)).toBeInTheDocument();
   });
 
   test("edits an existing task", async () => {
     const user = userEvent.setup();
     const tasksService = createFakeTasksService([makeTask({ id: "1", title: "Original title" })]);
-    render(
+    renderWithToast(
       <TasksPage
         tasksService={tasksService}
         contactsService={createFakeContactsService([])}
@@ -220,7 +222,7 @@ describe("TasksPage", () => {
   test("marks a task complete", async () => {
     const user = userEvent.setup();
     const tasksService = createFakeTasksService([makeTask({ id: "1", title: "Mark me done" })]);
-    render(
+    renderWithToast(
       <TasksPage
         tasksService={tasksService}
         contactsService={createFakeContactsService([])}
@@ -239,7 +241,7 @@ describe("TasksPage", () => {
   test("deletes a task", async () => {
     const user = userEvent.setup();
     const tasksService = createFakeTasksService([makeTask({ id: "1", title: "Doomed task" })]);
-    render(
+    renderWithToast(
       <TasksPage
         tasksService={tasksService}
         contactsService={createFakeContactsService([])}
@@ -253,6 +255,30 @@ describe("TasksPage", () => {
     await waitFor(() => {
       expect(screen.queryByText("Doomed task")).not.toBeInTheDocument();
     });
+    expect(await screen.findByText(/deleted doomed task/i)).toBeInTheDocument();
+  });
+
+  test("filters visible tasks by search", async () => {
+    const user = userEvent.setup();
+    const tasksService = createFakeTasksService([
+      makeTask({ id: "1", title: "Call Jane", contactName: "Jane Doe", dueDate: isoDateOffset(1) }),
+      makeTask({ id: "2", title: "Prepare contract", dealName: "Big Deal", dueDate: isoDateOffset(2) }),
+    ]);
+    renderWithToast(
+      <TasksPage
+        tasksService={tasksService}
+        contactsService={createFakeContactsService([])}
+        dealsService={createFakeDealsService([])}
+      />,
+    );
+    await screen.findByText("Call Jane");
+
+    await user.type(screen.getByLabelText(/search/i), "Big Deal");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Call Jane")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Prepare contract")).toBeInTheDocument();
   });
 });
 
@@ -272,5 +298,32 @@ describe("getTaskUrgency", () => {
 
   test("is normal for a completed task even if overdue", () => {
     expect(getTaskUrgency(isoDateOffset(-5), true)).toBe("normal");
+  });
+});
+
+describe("filterTasks", () => {
+  const tasks: Task[] = [
+    makeTask({ id: "1", title: "Call Jane", contactName: "Jane Doe", dealName: null }),
+    makeTask({ id: "2", title: "Prepare contract", contactName: null, dealName: "Big Deal" }),
+  ];
+
+  test("matches by title, case-insensitively", () => {
+    expect(filterTasks(tasks, "call").map((task) => task.id)).toEqual(["1"]);
+  });
+
+  test("matches by linked contact name", () => {
+    expect(filterTasks(tasks, "jane doe").map((task) => task.id)).toEqual(["1"]);
+  });
+
+  test("matches by linked deal name", () => {
+    expect(filterTasks(tasks, "big deal").map((task) => task.id)).toEqual(["2"]);
+  });
+
+  test("returns every task for a blank query", () => {
+    expect(filterTasks(tasks, "   ")).toEqual(tasks);
+  });
+
+  test("returns nothing for a query that matches no task", () => {
+    expect(filterTasks(tasks, "nonexistent")).toEqual([]);
   });
 });

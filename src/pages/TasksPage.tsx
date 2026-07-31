@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/contexts/ToastContext";
 import {
   contactsService as defaultContactsService,
   type Contact,
@@ -46,6 +47,21 @@ export function getTaskUrgency(
   if (diffDays < 0) return "overdue";
   if (diffDays <= DUE_SOON_WINDOW_DAYS) return "due-soon";
   return "normal";
+}
+
+/**
+ * Which tasks should stay visible for a search query — matches on the
+ * task's title, linked contact name, or linked deal name, case-insensitively.
+ */
+export function filterTasks(tasks: Task[], query: string): Task[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return tasks;
+  return tasks.filter(
+    (task) =>
+      task.title.toLowerCase().includes(q) ||
+      (task.contactName ?? "").toLowerCase().includes(q) ||
+      (task.dealName ?? "").toLowerCase().includes(q),
+  );
 }
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -93,10 +109,14 @@ export function TasksPage({
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [deals, setDeals] = React.useState<Deal[]>([]);
   const [loaded, setLoaded] = React.useState(false);
+  const [query, setQuery] = React.useState("");
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
   const [form, setForm] = React.useState<FormState>(emptyForm());
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const { showToast } = useToast();
+
+  const visibleTasks = React.useMemo(() => filterTasks(tasks, query), [tasks, query]);
 
   const refresh = React.useCallback(async () => {
     setTasks(await tasksService.list());
@@ -128,8 +148,13 @@ export function TasksPage({
   }
 
   async function handleDelete(task: Task) {
-    await tasksService.remove(task.id);
-    await refresh();
+    try {
+      await tasksService.remove(task.id);
+      await refresh();
+      showToast(`Deleted ${task.title}.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete task", "error");
+    }
   }
 
   async function handleToggleComplete(task: Task) {
@@ -141,6 +166,7 @@ export function TasksPage({
     event.preventDefault();
     setError(null);
     setSaving(true);
+    const isEdit = dialogState?.mode === "edit";
     try {
       const input: TaskInput = {
         title: form.title,
@@ -155,6 +181,7 @@ export function TasksPage({
       }
       setDialogState(null);
       await refresh();
+      showToast(isEdit ? "Task updated." : "Task created.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save task");
     } finally {
@@ -172,13 +199,27 @@ export function TasksPage({
         <Button onClick={openCreate}>Add task</Button>
       </div>
 
+      <div className="max-w-sm space-y-2">
+        <Label htmlFor="task-search">Search</Label>
+        <Input
+          id="task-search"
+          placeholder="Search by title, contact, or deal"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </div>
+
       {loaded && tasks.length === 0 && (
         <p className="text-sm text-muted-foreground">No tasks yet — add your first one.</p>
       )}
 
-      {tasks.length > 0 && (
+      {loaded && tasks.length > 0 && visibleTasks.length === 0 && (
+        <p className="text-sm text-muted-foreground">No tasks match your search.</p>
+      )}
+
+      {visibleTasks.length > 0 && (
         <div className="space-y-2">
-          {tasks.map((task) => {
+          {visibleTasks.map((task) => {
             const urgency = getTaskUrgency(task.dueDate, task.completed);
             return (
               <div

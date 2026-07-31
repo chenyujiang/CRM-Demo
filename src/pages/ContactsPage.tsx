@@ -16,6 +16,13 @@ import {
   type Contact,
   type ContactInput,
 } from "@/services/contactsService";
+import {
+  dealsService as defaultDealsService,
+  dealStageLabels,
+  type Deal,
+} from "@/services/dealsService";
+import { tasksService as defaultTasksService, type Task } from "@/services/tasksService";
+import { useToast } from "@/contexts/ToastContext";
 
 type DialogState =
   | { mode: "view"; contact: Contact }
@@ -34,16 +41,27 @@ const emptyForm: ContactInput = {
 export interface ContactsPageProps {
   /** The data-service seam: defaults to the real Supabase-backed contactsService. */
   contactsService?: typeof defaultContactsService;
+  /** Reused to show a contact's linked deals in its detail view. */
+  dealsService?: Pick<typeof defaultDealsService, "list">;
+  /** Reused to show a contact's linked tasks in its detail view. */
+  tasksService?: Pick<typeof defaultTasksService, "list">;
 }
 
-export function ContactsPage({ contactsService = defaultContactsService }: ContactsPageProps) {
+export function ContactsPage({
+  contactsService = defaultContactsService,
+  dealsService = defaultDealsService,
+  tasksService = defaultTasksService,
+}: ContactsPageProps) {
   const [contacts, setContacts] = React.useState<Contact[]>([]);
+  const [deals, setDeals] = React.useState<Deal[]>([]);
+  const [tasks, setTasks] = React.useState<Task[]>([]);
   const [query, setQuery] = React.useState("");
   const [loaded, setLoaded] = React.useState(false);
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
   const [form, setForm] = React.useState<ContactInput>(emptyForm);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const { showToast } = useToast();
 
   const refresh = React.useCallback(
     async (q: string) => {
@@ -58,6 +76,21 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
     void refresh(query);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, refresh]);
+
+  React.useEffect(() => {
+    void dealsService.list().then(setDeals);
+    void tasksService.list().then(setTasks);
+  }, [dealsService, tasksService]);
+
+  const viewedContactId = dialogState?.mode === "view" ? dialogState.contact.id : null;
+  const contactDeals = React.useMemo(
+    () => (viewedContactId ? deals.filter((deal) => deal.contactId === viewedContactId) : []),
+    [deals, viewedContactId],
+  );
+  const contactTasks = React.useMemo(
+    () => (viewedContactId ? tasks.filter((task) => task.contactId === viewedContactId) : []),
+    [tasks, viewedContactId],
+  );
 
   function openView(contact: Contact) {
     setDialogState({ mode: "view", contact });
@@ -82,14 +115,20 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
   }
 
   async function handleDelete(contact: Contact) {
-    await contactsService.remove(contact.id);
-    await refresh(query);
+    try {
+      await contactsService.remove(contact.id);
+      await refresh(query);
+      showToast(`Deleted ${contact.name}.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete contact", "error");
+    }
   }
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setSaving(true);
+    const isEdit = dialogState?.mode === "edit";
     try {
       if (dialogState?.mode === "edit") {
         await contactsService.update(dialogState.contact.id, form);
@@ -98,6 +137,7 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
       }
       setDialogState(null);
       await refresh(query);
+      showToast(isEdit ? "Contact updated." : "Contact created.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save contact");
     } finally {
@@ -212,6 +252,38 @@ export function ContactsPage({ contactsService = defaultContactsService }: Conta
                   <dd className="whitespace-pre-wrap">{dialogState.contact.notes}</dd>
                 </div>
               </dl>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Deals</h3>
+                {contactDeals.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No deals yet.</p>
+                ) : (
+                  <ul className="space-y-1 text-sm">
+                    {contactDeals.map((deal) => (
+                      <li key={deal.id} className="flex items-center justify-between">
+                        <span>{deal.name}</span>
+                        <span className="text-muted-foreground">
+                          {dealStageLabels[deal.stage]}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Tasks</h3>
+                {contactTasks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No tasks yet.</p>
+                ) : (
+                  <ul className="space-y-1 text-sm">
+                    {contactTasks.map((task) => (
+                      <li key={task.id} className="flex items-center justify-between">
+                        <span>{task.title}</span>
+                        <span className="text-muted-foreground">{task.dueDate}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => openEdit(dialogState.contact)}>
                   Edit

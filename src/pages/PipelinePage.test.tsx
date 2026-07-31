@@ -1,10 +1,11 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 
-import { handleDealDrop, PipelinePage } from "@/pages/PipelinePage";
+import { filterDeals, handleDealDrop, PipelinePage } from "@/pages/PipelinePage";
 import type { Contact, contactsService as realContactsService } from "@/services/contactsService";
 import type { Deal, dealsService as realDealsService, DealStage } from "@/services/dealsService";
+import { renderWithToast } from "@/test/renderWithToast";
 
 function makeContact(overrides: Partial<Contact>): Contact {
   return {
@@ -102,7 +103,7 @@ describe("PipelinePage", () => {
       makeDeal({ id: "1", name: "New Deal", stage: "new" }),
       makeDeal({ id: "2", name: "Qualified Deal", stage: "qualified" }),
     ]);
-    render(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
 
     expect(await screen.findByText("New Deal")).toBeInTheDocument();
     const newColumn = screen.getByTestId("column-new");
@@ -118,7 +119,7 @@ describe("PipelinePage", () => {
       makeContact({ id: "contact-1", name: "Jane Doe" }),
     ]);
     const dealsService = createFakeDealsService([]);
-    render(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
     await screen.findByText(/pipeline/i);
 
     await user.click(screen.getByRole("button", { name: /add deal/i }));
@@ -132,6 +133,7 @@ describe("PipelinePage", () => {
 
     const qualifiedColumn = await screen.findByTestId("column-qualified");
     expect(within(qualifiedColumn).getByText("Fresh Opportunity")).toBeInTheDocument();
+    expect(await screen.findByText(/deal created/i)).toBeInTheDocument();
   });
 
   test("edits an existing deal", async () => {
@@ -140,7 +142,7 @@ describe("PipelinePage", () => {
     const dealsService = createFakeDealsService([
       makeDeal({ id: "1", name: "Original Name", stage: "new" }),
     ]);
-    render(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
     await screen.findByText("Original Name");
 
     await user.click(screen.getByRole("button", { name: "Original Name" }));
@@ -159,7 +161,7 @@ describe("PipelinePage", () => {
     const dealsService = createFakeDealsService([
       makeDeal({ id: "1", name: "Doomed Deal", stage: "new" }),
     ]);
-    render(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
     await screen.findByText("Doomed Deal");
 
     await user.click(screen.getByRole("button", { name: /delete doomed deal/i }));
@@ -167,6 +169,25 @@ describe("PipelinePage", () => {
     await waitFor(() => {
       expect(screen.queryByText("Doomed Deal")).not.toBeInTheDocument();
     });
+    expect(await screen.findByText(/deleted doomed deal/i)).toBeInTheDocument();
+  });
+
+  test("filters visible deal cards by search", async () => {
+    const user = userEvent.setup();
+    const contactsService = createFakeContactsService([makeContact({})]);
+    const dealsService = createFakeDealsService([
+      makeDeal({ id: "1", name: "Platform expansion", stage: "new", contactName: "Ava Thompson" }),
+      makeDeal({ id: "2", name: "Renewal", stage: "qualified", contactName: "Isabella Chen" }),
+    ]);
+    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    await screen.findByText("Platform expansion");
+
+    await user.type(screen.getByLabelText(/search/i), "Chen");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Platform expansion")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Renewal")).toBeInTheDocument();
   });
 });
 
@@ -200,5 +221,28 @@ describe("handleDealDrop", () => {
       deals,
     );
     expect(result).toBeNull();
+  });
+});
+
+describe("filterDeals", () => {
+  const deals: Deal[] = [
+    makeDeal({ id: "1", name: "Platform expansion", contactName: "Ava Thompson" }),
+    makeDeal({ id: "2", name: "Renewal", contactName: "Isabella Chen" }),
+  ];
+
+  test("matches by deal name, case-insensitively", () => {
+    expect(filterDeals(deals, "platform").map((deal) => deal.id)).toEqual(["1"]);
+  });
+
+  test("matches by contact name", () => {
+    expect(filterDeals(deals, "chen").map((deal) => deal.id)).toEqual(["2"]);
+  });
+
+  test("returns every deal for a blank query", () => {
+    expect(filterDeals(deals, "   ")).toEqual(deals);
+  });
+
+  test("returns nothing for a query that matches no deal", () => {
+    expect(filterDeals(deals, "nonexistent")).toEqual([]);
   });
 });

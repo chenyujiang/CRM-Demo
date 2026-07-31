@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/contexts/ToastContext";
 import {
   contactsService as defaultContactsService,
   type Contact,
@@ -47,6 +48,20 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
  * Kept as a pure function so it's testable without simulating dnd-kit's
  * pointer/keyboard gesture mechanics — that's dnd-kit's job, this is ours.
  */
+/**
+ * Which deals should stay visible for a search query — matches on deal name
+ * or the linked contact's name, case-insensitively. Kept pure so the match
+ * rule is directly testable without rendering the board.
+ */
+export function filterDeals(deals: Deal[], query: string): Deal[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return deals;
+  return deals.filter(
+    (deal) =>
+      deal.name.toLowerCase().includes(q) || (deal.contactName ?? "").toLowerCase().includes(q),
+  );
+}
+
 export function handleDealDrop(
   event: DragEndEvent,
   deals: Deal[],
@@ -109,10 +124,14 @@ export function PipelinePage({
 }: PipelinePageProps) {
   const [deals, setDeals] = React.useState<Deal[]>([]);
   const [contacts, setContacts] = React.useState<Contact[]>([]);
+  const [query, setQuery] = React.useState("");
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
   const [form, setForm] = React.useState<FormState>(emptyForm("new"));
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const { showToast } = useToast();
+
+  const visibleDeals = React.useMemo(() => filterDeals(deals, query), [deals, query]);
 
   const refresh = React.useCallback(async () => {
     setDeals(await dealsService.list());
@@ -154,14 +173,20 @@ export function PipelinePage({
   }
 
   async function handleDelete(deal: Deal) {
-    await dealsService.remove(deal.id);
-    await refresh();
+    try {
+      await dealsService.remove(deal.id);
+      await refresh();
+      showToast(`Deleted ${deal.name}.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to delete deal", "error");
+    }
   }
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     setSaving(true);
+    const isEdit = dialogState?.mode === "edit";
     try {
       const input: DealInput = {
         name: form.name,
@@ -176,6 +201,7 @@ export function PipelinePage({
       }
       setDialogState(null);
       await refresh();
+      showToast(isEdit ? "Deal updated." : "Deal created.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save deal");
     } finally {
@@ -195,13 +221,27 @@ export function PipelinePage({
         <Button onClick={() => openCreate("new")}>Add deal</Button>
       </div>
 
+      <div className="max-w-sm space-y-2">
+        <Label htmlFor="pipeline-search">Search</Label>
+        <Input
+          id="pipeline-search"
+          placeholder="Search by deal or contact name"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </div>
+
+      {query && visibleDeals.length === 0 && (
+        <p className="text-sm text-muted-foreground">No deals match your search.</p>
+      )}
+
       <DndContext sensors={sensors} onDragEnd={(event) => void onDragEnd(event)}>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {DEAL_STAGES.map((stage) => (
             <DealColumn
               key={stage.id}
               stage={stage}
-              deals={deals.filter((deal) => deal.stage === stage.id)}
+              deals={visibleDeals.filter((deal) => deal.stage === stage.id)}
               onOpen={openEdit}
               onDelete={(deal) => void handleDelete(deal)}
             />
