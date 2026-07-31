@@ -26,6 +26,11 @@ function createFakeAuthService(): typeof realAuthService {
       listeners.forEach((listener) => listener(session));
       return session;
     },
+    async signUp(_email, _password) {
+      // Simulates a project that requires email confirmation: the account
+      // is created but no session is issued until the user confirms.
+      return null;
+    },
     async signOut() {
       session = null;
       listeners.forEach((listener) => listener(session));
@@ -101,5 +106,46 @@ describe("login flow", () => {
     expect(
       await screen.findByRole("heading", { name: /log in/i }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("sign-up flow", () => {
+  test("signing up shows a confirmation-pending state instead of entering the app", async () => {
+    const user = userEvent.setup();
+    renderApp(createFakeAuthService(), "/signup");
+
+    await user.type(screen.getByLabelText(/^email/i), "new-user@example.com");
+    await user.type(screen.getByLabelText(/^password/i), "Sup3rSecret!");
+    await user.type(screen.getByLabelText(/confirm password/i), "Sup3rSecret!");
+    await user.click(screen.getByRole("button", { name: /sign up/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: /check your email/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
+  test("blocks submission when the passwords don't match", async () => {
+    const user = userEvent.setup();
+    renderApp(createFakeAuthService(), "/signup");
+
+    await user.type(screen.getByLabelText(/^email/i), "new-user@example.com");
+    await user.type(screen.getByLabelText(/^password/i), "Sup3rSecret!");
+    await user.type(screen.getByLabelText(/confirm password/i), "somethingElse!");
+    await user.click(screen.getByRole("button", { name: /sign up/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/do not match/i);
+    expect(screen.getByRole("heading", { name: /^sign up$/i })).toBeInTheDocument();
+  });
+
+  test("links between the login and sign-up screens", async () => {
+    const user = userEvent.setup();
+    renderApp(createFakeAuthService(), "/login");
+
+    await user.click(screen.getByRole("link", { name: /sign up/i }));
+    expect(await screen.findByRole("heading", { name: /^sign up$/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: /log in/i }));
+    expect(await screen.findByRole("heading", { name: /^log in$/i })).toBeInTheDocument();
   });
 });

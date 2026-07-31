@@ -22,6 +22,17 @@ export const authService = {
     return { userId: data.user.id, email: data.user.email ?? null };
   },
 
+  /**
+   * Returns null when the project requires email confirmation — Supabase
+   * creates the user but issues no session until they confirm via email.
+   */
+  async signUp(email: string, password: string): Promise<Session | null> {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    if (!data.session) return null;
+    return { userId: data.session.user.id, email: data.session.user.email ?? null };
+  },
+
   async signOut(): Promise<void> {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;

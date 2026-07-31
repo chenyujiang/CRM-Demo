@@ -5,6 +5,8 @@ interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  /** Returns false when the account still needs email confirmation (no session yet). */
+  signUp: (email: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
 }
 
@@ -41,6 +43,11 @@ export function AuthProvider({
       signIn: async (email, password) => {
         const s = await authService.signIn(email, password);
         setSession(s);
+      },
+      signUp: async (email, password) => {
+        const s = await authService.signUp(email, password);
+        if (s) setSession(s);
+        return s !== null;
       },
       signOut: async () => {
         await authService.signOut();
