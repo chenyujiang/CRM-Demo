@@ -4,7 +4,7 @@ A proof-of-concept CRM built to demonstrate a modern web app stack to clients an
 
 **Live demo:** https://crm-demo-eason-chen.vercel.app
 **Login:** `demo@crm-demo.test` / `Demo12345!`
-**Flow guide:** [`crm-flow/index.html`](./crm-flow/index.html) — a standalone page mapping the app's navigation and core workflows; open it directly in a browser
+**Flow guide:** https://crm-demo-eason-chen.vercel.app/crm-flow/ — a standalone page mapping the app's navigation and core workflows (source: [`public/crm-flow/index.html`](./public/crm-flow/index.html))
 
 ## Features
 
