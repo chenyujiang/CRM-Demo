@@ -1,6 +1,6 @@
 # CRM Demo
 
-A proof-of-concept CRM built to demonstrate a modern web app stack to clients and internal stakeholders. Covers contacts, a drag-and-drop sales pipeline, task follow-ups, a metrics dashboard, and email/password auth with self-service sign-up.
+A proof-of-concept CRM built to demonstrate a modern web app stack to clients and internal stakeholders. Covers contacts, a drag-and-drop sales pipeline, task follow-ups, a metrics dashboard, an Activity timeline, and email/password auth with self-service sign-up.
 
 **Live demo:** https://crm-demo-eason-chen.vercel.app
 **Login:** `demo@crm-demo.test` / `Demo12345!`
@@ -12,6 +12,7 @@ A proof-of-concept CRM built to demonstrate a modern web app stack to clients an
 - **Pipeline** — a kanban board of deals across six stages (New → Qualified → Proposal → Negotiation → Won/Lost), with drag-and-drop (mouse and keyboard) to change stage
 - **Tasks** — follow-ups optionally linked to a contact or deal, with overdue/due-soon highlighting and complete/incomplete toggling
 - **Dashboard** — open deals, pipeline value, deals won this month, open task count, and a pipeline-value-by-stage chart, all computed live from the underlying data
+- **Activity timeline** — a Contact or Deal's detail view shows a newest-first feed of Comments and system events (record creation, Deal stage changes), with a form to post a new Comment
 
 ## Tech stack
 
