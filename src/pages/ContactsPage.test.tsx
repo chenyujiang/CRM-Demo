@@ -4,6 +4,11 @@ import { describe, expect, test } from "vitest";
 
 import { ContactsPage } from "@/pages/ContactsPage";
 import type {
+  activitiesService as realActivitiesService,
+  CommentActivity,
+  TimelineEntry,
+} from "@/services/activitiesService";
+import type {
   Contact,
   contactsService as realContactsService,
 } from "@/services/contactsService";
@@ -120,6 +125,30 @@ function createFakeTasksService(seed: Task[]): Pick<typeof realTasksService, "li
   };
 }
 
+function createFakeActivitiesService(
+  seed: TimelineEntry[] = [],
+): Pick<typeof realActivitiesService, "list" | "create"> {
+  let entries = [...seed];
+  let nextId = seed.length + 1;
+
+  return {
+    async list() {
+      return [...entries];
+    },
+    async create(_entityType, _entityId, body) {
+      const comment: CommentActivity = {
+        id: `comment-${nextId++}`,
+        type: "comment",
+        createdAt: new Date().toISOString(),
+        body,
+        authorEmail: "demo@crm-demo.test",
+      };
+      entries = [comment, ...entries];
+      return comment;
+    },
+  };
+}
+
 describe("ContactsPage", () => {
   test("lists contacts on load", async () => {
     const service = createFakeContactsService([
@@ -131,6 +160,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
 
@@ -155,6 +185,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
     await screen.findByText("Jane Doe");
@@ -184,7 +215,12 @@ describe("ContactsPage", () => {
       makeTask({ id: "task-2", title: "Follow up with Bob", contactId: "2" }),
     ]);
     renderWithToast(
-      <ContactsPage contactsService={service} dealsService={dealsService} tasksService={tasksService} />,
+      <ContactsPage
+        contactsService={service}
+        dealsService={dealsService}
+        tasksService={tasksService}
+        activitiesService={createFakeActivitiesService()}
+      />,
     );
     await screen.findByText("Jane Doe");
 
@@ -205,6 +241,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
     await screen.findByText("Jane Doe");
@@ -226,6 +263,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
     await screen.findByText("Jane Doe");
@@ -254,6 +292,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
     await screen.findByText("Jane Doe");
@@ -274,6 +313,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
     await screen.findByText(/no contacts yet/i);
@@ -300,6 +340,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
     await screen.findByText("Jane Doe");
@@ -326,6 +367,7 @@ describe("ContactsPage", () => {
         contactsService={service}
         dealsService={createFakeDealsService([])}
         tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
       />,
     );
     await screen.findByText("Jane Doe");
@@ -336,5 +378,77 @@ describe("ContactsPage", () => {
       expect(screen.queryByText("Jane Doe")).not.toBeInTheDocument();
     });
     expect(await screen.findByRole("status")).toHaveTextContent(/deleted jane doe/i);
+  });
+
+  test("shows a contact's Activity timeline in its detail view", async () => {
+    const user = userEvent.setup();
+    const service = createFakeContactsService([makeContact({ id: "1", name: "Jane Doe" })]);
+    const activitiesService = createFakeActivitiesService([
+      {
+        id: "comment-1",
+        type: "comment",
+        createdAt: new Date().toISOString(),
+        body: "Called about renewal",
+        authorEmail: "demo@crm-demo.test",
+      },
+    ]);
+    renderWithToast(
+      <ContactsPage
+        contactsService={service}
+        dealsService={createFakeDealsService([])}
+        tasksService={createFakeTasksService([])}
+        activitiesService={activitiesService}
+      />,
+    );
+    await screen.findByText("Jane Doe");
+
+    await user.click(screen.getByRole("button", { name: "Jane Doe" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Called about renewal")).toBeInTheDocument();
+  });
+
+  test("posts a new comment to a contact's timeline", async () => {
+    const user = userEvent.setup();
+    const service = createFakeContactsService([makeContact({ id: "1", name: "Jane Doe" })]);
+    renderWithToast(
+      <ContactsPage
+        contactsService={service}
+        dealsService={createFakeDealsService([])}
+        tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
+    await screen.findByText("Jane Doe");
+
+    await user.click(screen.getByRole("button", { name: "Jane Doe" }));
+    const dialog = await screen.findByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/add a comment/i), "Sent the proposal");
+    await user.click(within(dialog).getByRole("button", { name: /post comment/i }));
+
+    expect(await within(dialog).findByText("Sent the proposal")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent(/comment added/i);
+  });
+
+  test("rejects a blank comment without calling the service", async () => {
+    const user = userEvent.setup();
+    const service = createFakeContactsService([makeContact({ id: "1", name: "Jane Doe" })]);
+    renderWithToast(
+      <ContactsPage
+        contactsService={service}
+        dealsService={createFakeDealsService([])}
+        tasksService={createFakeTasksService([])}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
+    await screen.findByText("Jane Doe");
+
+    await user.click(screen.getByRole("button", { name: "Jane Doe" }));
+    const dialog = await screen.findByRole("dialog");
+
+    await user.click(within(dialog).getByRole("button", { name: /post comment/i }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/can't be empty/i);
   });
 });

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { supabase } from "@/lib/supabase";
+import { activitiesService } from "@/services/activitiesService";
 import { contactsService } from "@/services/contactsService";
 import { dealsService } from "@/services/dealsService";
 
@@ -74,6 +75,36 @@ describe("dealsService", () => {
 
     const all = await dealsService.list();
     expect(all.find((d) => d.id === deal.id)?.stage).toBe("qualified");
+  });
+
+  test("changing a deal's stage records a stage_changed activity", async () => {
+    const deal = await dealsService.create({
+      name: "Stage change logs activity",
+      value: 100,
+      stage: "new",
+      contactId: testContactId,
+    });
+    createdDealIds.push(deal.id);
+
+    await dealsService.changeStage(deal.id, "qualified");
+
+    const timeline = await activitiesService.list("deal", deal.id, deal.createdAt);
+    expect(timeline[0]).toMatchObject({ type: "stage_changed", fromStage: "new", toStage: "qualified" });
+  });
+
+  test("updating a deal's other fields without changing its stage records no activity", async () => {
+    const deal = await dealsService.create({
+      name: "No stage change, no activity",
+      value: 100,
+      stage: "new",
+      contactId: testContactId,
+    });
+    createdDealIds.push(deal.id);
+
+    await dealsService.update(deal.id, { name: "Renamed, same stage" });
+
+    const timeline = await activitiesService.list("deal", deal.id, deal.createdAt);
+    expect(timeline.every((entry) => entry.type !== "stage_changed")).toBe(true);
   });
 
   test("deletes a deal", async () => {

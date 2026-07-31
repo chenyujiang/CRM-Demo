@@ -11,6 +11,7 @@ import {
   type KeyboardCoordinateGetter,
 } from "@dnd-kit/core";
 
+import { ActivityTimeline, useActivityTimeline } from "@/components/ActivityTimeline";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { deleteWithToast, useToast } from "@/contexts/ToastContext";
 import { matchesQuery } from "@/lib/search";
+import { activitiesService as defaultActivitiesService } from "@/services/activitiesService";
 import {
   contactsService as defaultContactsService,
   type Contact,
@@ -94,7 +96,11 @@ const columnKeyboardCoordinateGetter: KeyboardCoordinateGetter = (
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 };
 
-type DialogState = { mode: "create" } | { mode: "edit"; deal: Deal } | null;
+type DialogState =
+  | { mode: "view"; deal: Deal }
+  | { mode: "create" }
+  | { mode: "edit"; deal: Deal }
+  | null;
 
 interface FormState {
   name: string;
@@ -112,11 +118,14 @@ export interface PipelinePageProps {
   dealsService?: typeof defaultDealsService;
   /** Reused to populate the "assign to a contact" picker. */
   contactsService?: typeof defaultContactsService;
+  /** Reused to show and add to a deal's Activity timeline. */
+  activitiesService?: Pick<typeof defaultActivitiesService, "list" | "create">;
 }
 
 export function PipelinePage({
   dealsService = defaultDealsService,
   contactsService = defaultContactsService,
+  activitiesService = defaultActivitiesService,
 }: PipelinePageProps) {
   const [deals, setDeals] = React.useState<Deal[]>([]);
   const [contacts, setContacts] = React.useState<Contact[]>([]);
@@ -149,6 +158,17 @@ export function PipelinePage({
     if (!result) return;
     await dealsService.changeStage(result.dealId, result.stage);
     await refresh();
+  }
+
+  const { entries: timeline, addComment: handleAddComment } = useActivityTimeline(
+    activitiesService,
+    "deal",
+    dialogState?.mode === "view" ? dialogState.deal : null,
+    () => showToast("Comment added."),
+  );
+
+  function openView(deal: Deal) {
+    setDialogState({ mode: "view", deal });
   }
 
   function openCreate(stage: DealStage) {
@@ -240,7 +260,7 @@ export function PipelinePage({
               key={stage.id}
               stage={stage}
               deals={visibleDeals.filter((deal) => deal.stage === stage.id)}
-              onOpen={openEdit}
+              onOpen={openView}
               onDelete={(deal) => void handleDelete(deal)}
             />
           ))}
@@ -249,6 +269,34 @@ export function PipelinePage({
 
       <Dialog open={dialogState !== null} onOpenChange={(open) => !open && setDialogState(null)}>
         <DialogContent>
+          {dialogState?.mode === "view" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{dialogState.deal.name}</DialogTitle>
+              </DialogHeader>
+              <dl className="space-y-3 text-sm">
+                <div>
+                  <dt className="text-muted-foreground">Value</dt>
+                  <dd>{currencyFormatter.format(dialogState.deal.value)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Contact</dt>
+                  <dd>{dialogState.deal.contactName}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Stage</dt>
+                  <dd>{dealStageLabels[dialogState.deal.stage]}</dd>
+                </div>
+              </dl>
+              <ActivityTimeline entries={timeline} onSubmitComment={handleAddComment} />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => openEdit(dialogState.deal)}>
+                  Edit
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
           <DialogHeader>
             <DialogTitle>{dialogState?.mode === "edit" ? "Edit deal" : "Add deal"}</DialogTitle>
           </DialogHeader>
@@ -318,6 +366,8 @@ export function PipelinePage({
               </Button>
             </DialogFooter>
           </form>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { ActivityTimeline, useActivityTimeline } from "@/components/ActivityTimeline";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { activitiesService as defaultActivitiesService } from "@/services/activitiesService";
 import {
   contactsService as defaultContactsService,
   type Contact,
@@ -45,12 +47,15 @@ export interface ContactsPageProps {
   dealsService?: Pick<typeof defaultDealsService, "list">;
   /** Reused to show a contact's linked tasks in its detail view. */
   tasksService?: Pick<typeof defaultTasksService, "list">;
+  /** Reused to show and add to a contact's Activity timeline. */
+  activitiesService?: Pick<typeof defaultActivitiesService, "list" | "create">;
 }
 
 export function ContactsPage({
   contactsService = defaultContactsService,
   dealsService = defaultDealsService,
   tasksService = defaultTasksService,
+  activitiesService = defaultActivitiesService,
 }: ContactsPageProps) {
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [deals, setDeals] = React.useState<Deal[]>([]);
@@ -90,6 +95,13 @@ export function ContactsPage({
   const contactTasks = React.useMemo(
     () => (viewedContactId ? tasks.filter((task) => task.contactId === viewedContactId) : []),
     [tasks, viewedContactId],
+  );
+
+  const { entries: timeline, addComment: handleAddComment } = useActivityTimeline(
+    activitiesService,
+    "contact",
+    dialogState?.mode === "view" ? dialogState.contact : null,
+    () => showToast("Comment added."),
   );
 
   function openView(contact: Contact) {
@@ -286,6 +298,7 @@ export function ContactsPage({
                   </ul>
                 )}
               </div>
+              <ActivityTimeline entries={timeline} onSubmitComment={handleAddComment} />
               <DialogFooter>
                 <Button variant="outline" onClick={() => openEdit(dialogState.contact)}>
                   Edit

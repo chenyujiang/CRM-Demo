@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 
 import { toLocalIsoDate } from "../src/lib/date";
 
+type DealStage = "new" | "qualified" | "proposal" | "negotiation" | "won" | "lost";
+
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
 const demoEmail = "demo@crm-demo.test";
@@ -42,6 +44,49 @@ function isoDateOffset(days: number): string {
   return toLocalIsoDate(d);
 }
 
+function daysAgoIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+
+/**
+ * How long ago a deal past "New" was created — deeper pipeline stages get a
+ * longer backdated history, so the seeded pipeline looks like it's been
+ * worked over time rather than assembled a moment ago.
+ */
+const STAGE_AGE_DAYS: Partial<Record<DealStage, number>> = {
+  qualified: 10,
+  proposal: 16,
+  negotiation: 22,
+  won: 28,
+  lost: 24,
+};
+
+/** The stage-by-stage path a deal took to reach its (seeded) current stage. */
+const STAGE_PROGRESSION: DealStage[] = ["new", "qualified", "proposal", "negotiation"];
+
+function stageChangePath(finalStage: DealStage): DealStage[] {
+  if (finalStage === "won" || finalStage === "lost") return [...STAGE_PROGRESSION, finalStage];
+  return STAGE_PROGRESSION.slice(0, STAGE_PROGRESSION.indexOf(finalStage) + 1);
+}
+
+/** Builds the backdated, staggered stage_changed activity rows for one deal. */
+function stageChangeActivitiesFor(dealId: string, finalStage: DealStage, ageDays: number) {
+  const path = stageChangePath(finalStage);
+  const transitions = path.slice(1);
+  const step = ageDays / (transitions.length + 1);
+
+  return transitions.map((toStage, i) => ({
+    entity_type: "deal",
+    entity_id: dealId,
+    type: "stage_changed",
+    from_stage: path[i],
+    to_stage: toStage,
+    created_at: daysAgoIso(Math.max(1, Math.round(ageDays - step * (i + 1)))),
+  }));
+}
+
 function tasksFor(contactIdByEmail: Map<string, string>, dealIdByName: Map<string, string>) {
   const contact = (email: string) => {
     const id = contactIdByEmail.get(email);
@@ -75,16 +120,75 @@ function dealsFor(contactIdByEmail: Map<string, string>) {
     return id;
   };
 
+  /**
+   * Every deal gets an explicit created_at — PostgREST's batch insert treats
+   * a key missing from some rows as NULL for those rows once any row in the
+   * batch has it, so this can't be conditional per row. Deals past "New" get
+   * backdated, so their seeded stage_changed history (built in `seed()` from
+   * STAGE_AGE_DAYS) has room to sit chronologically after creation and
+   * before now; "New" deals stay effectively fresh.
+   */
+  const backdated = (stage: DealStage) => ({ created_at: daysAgoIso(STAGE_AGE_DAYS[stage] ?? 0) });
+
   return [
-    { name: "Platform expansion", value: 15000, stage: "new", contact_id: idFor("ava.thompson@northwindsaas.test") },
-    { name: "Initial rollout", value: 8000, stage: "new", contact_id: idFor("sophia.nguyen@brightlinecloud.test") },
-    { name: "Analytics upgrade", value: 22000, stage: "qualified", contact_id: idFor("emma.rodriguez@vertexanalytics.test") },
-    { name: "Renewal", value: 12000, stage: "qualified", contact_id: idFor("isabella.chen@fenwickdigital.test") },
-    { name: "Onboarding package", value: 9500, stage: "proposal", contact_id: idFor("mia.johansson@cascademetrics.test") },
-    { name: "Enterprise plan", value: 30000, stage: "proposal", contact_id: idFor("charlotte.dubois@anchorpointsystems.test") },
-    { name: "Technical evaluation", value: 18000, stage: "negotiation", contact_id: idFor("amelia.novak@redshiftlabs.test") },
-    { name: "Referral deal", value: 14000, stage: "won", contact_id: idFor("harper.singh@lumendataco.test") },
-    { name: "Budget freeze", value: 6000, stage: "lost", contact_id: idFor("evelyn.marsh@solsticeworks.test") },
+    { name: "Platform expansion", value: 15000, stage: "new", contact_id: idFor("ava.thompson@northwindsaas.test"), ...backdated("new") },
+    { name: "Initial rollout", value: 8000, stage: "new", contact_id: idFor("sophia.nguyen@brightlinecloud.test"), ...backdated("new") },
+    { name: "Analytics upgrade", value: 22000, stage: "qualified", contact_id: idFor("emma.rodriguez@vertexanalytics.test"), ...backdated("qualified") },
+    { name: "Renewal", value: 12000, stage: "qualified", contact_id: idFor("isabella.chen@fenwickdigital.test"), ...backdated("qualified") },
+    { name: "Onboarding package", value: 9500, stage: "proposal", contact_id: idFor("mia.johansson@cascademetrics.test"), ...backdated("proposal") },
+    { name: "Enterprise plan", value: 30000, stage: "proposal", contact_id: idFor("charlotte.dubois@anchorpointsystems.test"), ...backdated("proposal") },
+    { name: "Technical evaluation", value: 18000, stage: "negotiation", contact_id: idFor("amelia.novak@redshiftlabs.test"), ...backdated("negotiation") },
+    { name: "Referral deal", value: 14000, stage: "won", contact_id: idFor("harper.singh@lumendataco.test"), ...backdated("won") },
+    { name: "Budget freeze", value: 6000, stage: "lost", contact_id: idFor("evelyn.marsh@solsticeworks.test"), ...backdated("lost") },
+  ];
+}
+
+/** A handful of sample Comments seeded on contacts/deals, so the Activity timeline never looks empty. */
+function commentsFor(contactIdByEmail: Map<string, string>, dealIdByName: Map<string, string>) {
+  const contact = (email: string) => {
+    const id = contactIdByEmail.get(email);
+    if (!id) throw new Error(`Seed contact not found for comment: ${email}`);
+    return id;
+  };
+  const deal = (name: string) => {
+    const id = dealIdByName.get(name);
+    if (!id) throw new Error(`Seed deal not found for comment: ${name}`);
+    return id;
+  };
+
+  return [
+    {
+      entity_type: "contact",
+      entity_id: contact("isabella.chen@fenwickdigital.test"),
+      type: "comment",
+      body: "Called to discuss the renewal — she wants updated pricing before it goes to their finance team.",
+      author_email: demoEmail,
+      created_at: daysAgoIso(3),
+    },
+    {
+      entity_type: "contact",
+      entity_id: contact("charlotte.dubois@anchorpointsystems.test"),
+      type: "comment",
+      body: "Confirmed budget sign-off internally; just needs the contract redlined.",
+      author_email: demoEmail,
+      created_at: daysAgoIso(2),
+    },
+    {
+      entity_type: "deal",
+      entity_id: deal("Enterprise plan"),
+      type: "comment",
+      body: "Sent the revised proposal reflecting the negotiated seat count.",
+      author_email: demoEmail,
+      created_at: daysAgoIso(2),
+    },
+    {
+      entity_type: "deal",
+      entity_id: deal("Technical evaluation"),
+      type: "comment",
+      body: "Their security team asked for our SOC 2 report before proceeding.",
+      author_email: demoEmail,
+      created_at: daysAgoIso(1),
+    },
   ];
 }
 
@@ -94,6 +198,12 @@ async function seed() {
     password: demoPassword,
   });
   if (authError) throw authError;
+
+  const { error: deleteActivitiesError } = await supabase
+    .from("activities")
+    .delete()
+    .not("id", "is", null);
+  if (deleteActivitiesError) throw deleteActivitiesError;
 
   const { error: deleteTasksError } = await supabase.from("tasks").delete().not("id", "is", null);
   if (deleteTasksError) throw deleteTasksError;
@@ -122,7 +232,7 @@ async function seed() {
   const { data: insertedDeals, error: insertDealsError } = await supabase
     .from("deals")
     .insert(dealsFor(contactIdByEmail))
-    .select("id, name");
+    .select("id, name, stage, created_at");
   if (insertDealsError) throw insertDealsError;
 
   console.log(`Seeded ${insertedDeals.length} deals.`);
@@ -138,6 +248,21 @@ async function seed() {
   if (insertTasksError) throw insertTasksError;
 
   console.log(`Seeded ${insertedTasks.length} tasks.`);
+
+  const stageChangeActivities = insertedDeals.flatMap(
+    (d: { id: string; stage: DealStage; created_at: string }) => {
+      const ageDays = STAGE_AGE_DAYS[d.stage];
+      return ageDays === undefined ? [] : stageChangeActivitiesFor(d.id, d.stage, ageDays);
+    },
+  );
+
+  const { data: insertedActivities, error: insertActivitiesError } = await supabase
+    .from("activities")
+    .insert([...stageChangeActivities, ...commentsFor(contactIdByEmail, dealIdByName)])
+    .select("id");
+  if (insertActivitiesError) throw insertActivitiesError;
+
+  console.log(`Seeded ${insertedActivities.length} activities.`);
 
   await supabase.auth.signOut();
 }

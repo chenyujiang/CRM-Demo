@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { activitiesService } from "@/services/activitiesService";
 
 export type DealStage = "new" | "qualified" | "proposal" | "negotiation" | "won" | "lost";
 
@@ -84,6 +85,18 @@ export const dealsService = {
 
   async update(id: string, input: Partial<DealInput>): Promise<Deal> {
     const { contactId, ...rest } = input;
+
+    let previousStage: DealStage | null = null;
+    if (input.stage !== undefined) {
+      const { data: existing, error: fetchError } = await supabase
+        .from("deals")
+        .select("stage")
+        .eq("id", id)
+        .single();
+      if (fetchError) throw fetchError;
+      previousStage = (existing as { stage: DealStage }).stage;
+    }
+
     const { data, error } = await supabase
       .from("deals")
       .update({
@@ -95,6 +108,11 @@ export const dealsService = {
       .select("*, contacts(name)")
       .single();
     if (error) throw error;
+
+    if (previousStage !== null && input.stage !== undefined && previousStage !== input.stage) {
+      await activitiesService.recordStageChange(id, previousStage, input.stage);
+    }
+
     return toDeal(data as DealRow);
   },
 

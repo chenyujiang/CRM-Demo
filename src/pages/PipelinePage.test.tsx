@@ -3,6 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
 
 import { filterDeals, handleDealDrop, PipelinePage } from "@/pages/PipelinePage";
+import type {
+  activitiesService as realActivitiesService,
+  CommentActivity,
+  TimelineEntry,
+} from "@/services/activitiesService";
 import type { Contact, contactsService as realContactsService } from "@/services/contactsService";
 import type { Deal, dealsService as realDealsService, DealStage } from "@/services/dealsService";
 import { renderWithToast } from "@/test/renderWithToast";
@@ -96,6 +101,30 @@ function createFakeDealsService(seed: Deal[]): typeof realDealsService {
   };
 }
 
+function createFakeActivitiesService(
+  seed: TimelineEntry[] = [],
+): Pick<typeof realActivitiesService, "list" | "create"> {
+  let entries = [...seed];
+  let nextId = seed.length + 1;
+
+  return {
+    async list() {
+      return [...entries];
+    },
+    async create(_entityType, _entityId, body) {
+      const comment: CommentActivity = {
+        id: `comment-${nextId++}`,
+        type: "comment",
+        createdAt: new Date().toISOString(),
+        body,
+        authorEmail: "demo@crm-demo.test",
+      };
+      entries = [comment, ...entries];
+      return comment;
+    },
+  };
+}
+
 describe("PipelinePage", () => {
   test("renders deals grouped into their stage columns", async () => {
     const contactsService = createFakeContactsService([makeContact({})]);
@@ -103,7 +132,13 @@ describe("PipelinePage", () => {
       makeDeal({ id: "1", name: "New Deal", stage: "new" }),
       makeDeal({ id: "2", name: "Qualified Deal", stage: "qualified" }),
     ]);
-    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
 
     expect(await screen.findByText("New Deal")).toBeInTheDocument();
     const newColumn = screen.getByTestId("column-new");
@@ -119,7 +154,13 @@ describe("PipelinePage", () => {
       makeContact({ id: "contact-1", name: "Jane Doe" }),
     ]);
     const dealsService = createFakeDealsService([]);
-    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
     await screen.findByText(/pipeline/i);
 
     await user.click(screen.getByRole("button", { name: /add deal/i }));
@@ -142,17 +183,94 @@ describe("PipelinePage", () => {
     const dealsService = createFakeDealsService([
       makeDeal({ id: "1", name: "Original Name", stage: "new" }),
     ]);
-    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
     await screen.findByText("Original Name");
 
     await user.click(screen.getByRole("button", { name: "Original Name" }));
-    const dialog = await screen.findByRole("dialog");
-    const nameField = within(dialog).getByLabelText(/name/i);
+    const viewDialog = await screen.findByRole("dialog");
+    await user.click(within(viewDialog).getByRole("button", { name: /edit/i }));
+
+    const editDialog = await screen.findByRole("dialog");
+    const nameField = within(editDialog).getByLabelText(/name/i);
     await user.clear(nameField);
     await user.type(nameField, "Renamed Deal");
-    await user.click(within(dialog).getByRole("button", { name: /save/i }));
+    await user.click(within(editDialog).getByRole("button", { name: /save/i }));
 
     expect(await screen.findByText("Renamed Deal")).toBeInTheDocument();
+  });
+
+  test("opens a deal's read-only detail view showing its fields", async () => {
+    const user = userEvent.setup();
+    const contactsService = createFakeContactsService([makeContact({ id: "contact-1", name: "Jane Doe" })]);
+    const dealsService = createFakeDealsService([
+      makeDeal({ id: "1", name: "Big Deal", value: 5000, stage: "qualified", contactName: "Jane Doe" }),
+    ]);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
+    await screen.findByText("Big Deal");
+
+    await user.click(screen.getByRole("button", { name: "Big Deal" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("$5,000")).toBeInTheDocument();
+    expect(within(dialog).getByText("Jane Doe")).toBeInTheDocument();
+    expect(within(dialog).getByText("Qualified")).toBeInTheDocument();
+  });
+
+  test("shows a deal's Activity timeline, including stage-change entries", async () => {
+    const user = userEvent.setup();
+    const contactsService = createFakeContactsService([makeContact({})]);
+    const dealsService = createFakeDealsService([makeDeal({ id: "1", name: "Big Deal" })]);
+    const activitiesService = createFakeActivitiesService([
+      { id: "1", type: "stage_changed", createdAt: new Date().toISOString(), fromStage: "new", toStage: "qualified" },
+    ]);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={activitiesService}
+      />,
+    );
+    await screen.findByText("Big Deal");
+
+    await user.click(screen.getByRole("button", { name: "Big Deal" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/moved from new to qualified/i)).toBeInTheDocument();
+  });
+
+  test("posts a new comment to a deal's timeline", async () => {
+    const user = userEvent.setup();
+    const contactsService = createFakeContactsService([makeContact({})]);
+    const dealsService = createFakeDealsService([makeDeal({ id: "1", name: "Big Deal" })]);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
+    await screen.findByText("Big Deal");
+
+    await user.click(screen.getByRole("button", { name: "Big Deal" }));
+    const dialog = await screen.findByRole("dialog");
+
+    await user.type(within(dialog).getByLabelText(/add a comment/i), "Customer wants a discount");
+    await user.click(within(dialog).getByRole("button", { name: /post comment/i }));
+
+    expect(await within(dialog).findByText("Customer wants a discount")).toBeInTheDocument();
+    expect(await screen.findByText(/comment added/i)).toBeInTheDocument();
   });
 
   test("deletes a deal", async () => {
@@ -161,7 +279,13 @@ describe("PipelinePage", () => {
     const dealsService = createFakeDealsService([
       makeDeal({ id: "1", name: "Doomed Deal", stage: "new" }),
     ]);
-    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
     await screen.findByText("Doomed Deal");
 
     await user.click(screen.getByRole("button", { name: /delete doomed deal/i }));
@@ -179,7 +303,13 @@ describe("PipelinePage", () => {
       makeDeal({ id: "1", name: "Platform expansion", stage: "new", contactName: "Ava Thompson" }),
       makeDeal({ id: "2", name: "Renewal", stage: "qualified", contactName: "Isabella Chen" }),
     ]);
-    renderWithToast(<PipelinePage dealsService={dealsService} contactsService={contactsService} />);
+    renderWithToast(
+      <PipelinePage
+        dealsService={dealsService}
+        contactsService={contactsService}
+        activitiesService={createFakeActivitiesService()}
+      />,
+    );
     await screen.findByText("Platform expansion");
 
     await user.type(screen.getByLabelText(/search/i), "Chen");
